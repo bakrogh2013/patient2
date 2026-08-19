@@ -1,0 +1,32 @@
+<!-- Vapi Widget -->
+<script
+  src="https://cdn.jsdelivr.net/gh/VapiAI/html-script-tag@latest/dist/assets/index.js"
+  defer
+  async>
+</script>
+
+<script>
+window.addEventListener("load", () => {
+  window.vapiSDK.run({
+    apiKey: "0ee2d047-2b55-4b08-8f67-dad8bce1595d",
+    assistant: "6abd7fa7-13e7-4366-811b-937a66da0c1a"
+  });
+
+  // Wait for widget to be injected
+  const interval = setInterval(() => {
+    const btn = document.querySelector("#vapi-support-btn");
+
+    if (btn) {
+      clearInterval(interval);
+
+      btn.style.position = "fixed";
+      btn.style.top = "50%";
+      btn.style.left = "50%";
+      btn.style.bottom = "auto";
+      btn.style.right = "auto";
+      btn.style.transform = "translate(-50%, -50%)";
+      btn.style.zIndex = "99999";
+    }
+  }, 100);
+});
+</script>
