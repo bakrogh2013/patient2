@@ -1,32 +1,500 @@
-<!-- Vapi Widget -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Patient Call Simulation</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 30px;
+      background: #ffffff;
+    }
+
+    .recorder {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    button {
+      font-size: 16px;
+      padding: 12px 20px;
+      margin: 8px;
+      cursor: pointer;
+    }
+
+    #recordStatus {
+      margin: 15px 0;
+      font-weight: bold;
+    }
+
+    #downloadArea {
+      margin-top: 20px;
+      display: none;
+    }
+
+    audio {
+      margin-top: 15px;
+      max-width: 100%;
+    }
+
+    #vapiArea {
+      height: 180px;
+      position: relative;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="recorder">
+
+  <h2>Patient Call Simulation</h2>
+
+<p>
+    1) Start the recording before beginning the patient call. (Note: You may have to enable or allow access to your microphone)
+  </p>
+  <p>2) Click the phone icon to start the call with the patient.</p>
+  <p>3) When you are finished talking to the patient, click the phone icon to hang up and then click "stop recording".</p>
+  <p>4) Click "Download Recording"</p>
+  <p> 5) Upload your recording to the Canvas assignment for you instructor to grade.</p>
+  <button id="startRecording">
+    ● Start Recording
+  </button>
+
+  <button id="stopRecording" disabled>
+    ■ Stop Recording
+  </button>
+
+  <div id="recordStatus">
+    Recording not started
+  </div>
+
+  <div id="vapiArea"></div>
+
+  <div id="downloadArea">
+
+    <h3>Recording Complete</h3>
+
+    <audio id="recordingPlayback" controls></audio>
+
+    <br>
+
+    <a id="downloadRecording">
+      <button>
+        Download Recording
+      </button>
+    </a>
+
+  </div>
+
+</div>
+
+
+<!-- VAPI -->
+
 <script
   src="https://cdn.jsdelivr.net/gh/VapiAI/html-script-tag@latest/dist/assets/index.js"
   defer
   async>
 </script>
 
+
 <script>
+
+let mediaRecorder;
+let recordedChunks = [];
+
+let microphoneStream;
+let audioContext;
+let recordingDestination;
+
+let remoteAudioConnected = false;
+
+
+/* ----------------------------------------
+   VAPI WIDGET
+---------------------------------------- */
+
 window.addEventListener("load", () => {
+
   window.vapiSDK.run({
+
     apiKey: "0ee2d047-2b55-4b08-8f67-dad8bce1595d",
+
     assistant: "6abd7fa7-13e7-4366-811b-937a66da0c1a"
+
   });
 
-  // Wait for widget to be injected
+
+  /*
+    Move the Vapi phone button into the
+    middle of our Vapi area.
+  */
+
   const interval = setInterval(() => {
-    const btn = document.querySelector("#vapi-support-btn");
+
+    const btn =
+      document.querySelector("#vapi-support-btn");
 
     if (btn) {
+
       clearInterval(interval);
 
-      btn.style.position = "fixed";
+      btn.style.position = "absolute";
+
       btn.style.top = "50%";
       btn.style.left = "50%";
+
       btn.style.bottom = "auto";
       btn.style.right = "auto";
-      btn.style.transform = "translate(-50%, -50%)";
+
+      btn.style.transform =
+        "translate(-50%, -50%)";
+
       btn.style.zIndex = "99999";
+
+      document
+        .getElementById("vapiArea")
+        .appendChild(btn);
     }
+
   }, 100);
+
 });
+
+
+/* ----------------------------------------
+   START RECORDING
+---------------------------------------- */
+
+document
+  .getElementById("startRecording")
+  .addEventListener("click", startRecording);
+
+
+async function startRecording() {
+
+  try {
+
+    /*
+      Ask permission to use student's microphone.
+    */
+
+    microphoneStream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: true
+      });
+
+
+    /*
+      Create an audio mixer.
+    */
+
+    audioContext =
+      new AudioContext();
+
+    recordingDestination =
+      audioContext.createMediaStreamDestination();
+
+
+    /*
+      Add student's microphone to recording.
+    */
+
+    const microphoneSource =
+      audioContext.createMediaStreamSource(
+        microphoneStream
+      );
+
+    microphoneSource.connect(
+      recordingDestination
+    );
+
+
+    /*
+      Start recording the combined stream.
+    */
+
+    recordedChunks = [];
+
+    const options = {};
+
+    if (
+      MediaRecorder.isTypeSupported(
+        "audio/webm;codecs=opus"
+      )
+    ) {
+      options.mimeType =
+        "audio/webm;codecs=opus";
+    }
+
+
+    mediaRecorder =
+      new MediaRecorder(
+        recordingDestination.stream,
+        options
+      );
+
+
+    mediaRecorder.ondataavailable =
+      event => {
+
+        if (
+          event.data &&
+          event.data.size > 0
+        ) {
+          recordedChunks.push(event.data);
+        }
+
+      };
+
+
+    mediaRecorder.onstop =
+      createRecordingDownload;
+
+
+    mediaRecorder.start(1000);
+
+
+    document
+      .getElementById("startRecording")
+      .disabled = true;
+
+    document
+      .getElementById("stopRecording")
+      .disabled = false;
+
+    document
+      .getElementById("recordStatus")
+      .textContent =
+        "● Recording in progress";
+
+
+    /*
+      Henry's audio stream appears only after
+      the Vapi call connects.
+
+      Check repeatedly until we find it.
+    */
+
+    connectHenryAudio();
+
+  }
+
+  catch (error) {
+
+    console.error(error);
+
+    document
+      .getElementById("recordStatus")
+      .textContent =
+        "Unable to start recording. Please allow microphone access.";
+
+  }
+
+}
+
+
+/* ----------------------------------------
+   FIND HENRY'S AUDIO
+---------------------------------------- */
+
+function connectHenryAudio() {
+
+  const search =
+    setInterval(() => {
+
+      /*
+        Vapi creates an audio element for
+        the assistant's voice.
+      */
+
+      const audioElements =
+        document.querySelectorAll("audio");
+
+
+      for (
+        const audioElement of audioElements
+      ) {
+
+        /*
+          Ignore our own recording playback.
+        */
+
+        if (
+          audioElement.id ===
+          "recordingPlayback"
+        ) {
+          continue;
+        }
+
+
+        /*
+          Vapi's remote audio element should
+          have a MediaStream attached.
+        */
+
+        if (
+          audioElement.srcObject &&
+          audioElement.srcObject
+            .getAudioTracks()
+            .length > 0
+        ) {
+
+          if (!remoteAudioConnected) {
+
+            const henrySource =
+              audioContext
+                .createMediaStreamSource(
+                  audioElement.srcObject
+                );
+
+            /*
+              Add Henry to the recording.
+            */
+
+            henrySource.connect(
+              recordingDestination
+            );
+
+            remoteAudioConnected = true;
+
+            console.log(
+              "Henry audio connected to recorder."
+            );
+
+          }
+
+          clearInterval(search);
+
+          return;
+
+        }
+
+      }
+
+    }, 500);
+
+
+  /*
+    Stop searching after 2 minutes if
+    for some reason no Vapi audio appears.
+  */
+
+  setTimeout(() => {
+
+    clearInterval(search);
+
+  }, 120000);
+
+}
+
+
+/* ----------------------------------------
+   STOP RECORDING
+---------------------------------------- */
+
+document
+  .getElementById("stopRecording")
+  .addEventListener("click", stopRecording);
+
+
+function stopRecording() {
+
+  if (
+    mediaRecorder &&
+    mediaRecorder.state !== "inactive"
+  ) {
+    mediaRecorder.stop();
+  }
+
+
+  if (microphoneStream) {
+
+    microphoneStream
+      .getTracks()
+      .forEach(
+        track => track.stop()
+      );
+
+  }
+
+
+  document
+    .getElementById("stopRecording")
+    .disabled = true;
+
+  document
+    .getElementById("startRecording")
+    .disabled = false;
+
+  document
+    .getElementById("recordStatus")
+    .textContent =
+      "Recording stopped";
+
+}
+
+
+/* ----------------------------------------
+   CREATE STUDENT DOWNLOAD
+---------------------------------------- */
+
+function createRecordingDownload() {
+
+  const mimeType =
+    mediaRecorder.mimeType ||
+    "audio/webm";
+
+
+  const blob =
+    new Blob(
+      recordedChunks,
+      {
+        type: mimeType
+      }
+    );
+
+
+  const url =
+    URL.createObjectURL(blob);
+
+
+  const playback =
+    document.getElementById(
+      "recordingPlayback"
+    );
+
+
+  playback.src = url;
+
+
+  const download =
+    document.getElementById(
+      "downloadRecording"
+    );
+
+
+  download.href = url;
+
+  download.download =
+    "Henry-Jacobson-Patient-Call.webm";
+
+
+  document
+    .getElementById("downloadArea")
+    .style.display = "block";
+
+
+  remoteAudioConnected = false;
+
+}
+
 </script>
+
+</body>
+</html>
